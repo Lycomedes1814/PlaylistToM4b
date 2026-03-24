@@ -169,10 +169,15 @@ def main():
     ]
 
     if has_chapters and chapter_txt.exists():
-        ffmpeg_args += ["-i", str(chapter_txt), "-map_metadata", "1", "-map_chapters", "1"]
+        ffmpeg_args += ["-i", str(chapter_txt)]
 
     if has_cover:
         ffmpeg_args += ["-i", str(cover_jpg)]
+
+    if has_chapters and chapter_txt.exists():
+        ffmpeg_args += ["-map_metadata", "1", "-map_chapters", "1"]
+
+    if has_cover:
         cover_idx = 2 if (has_chapters and chapter_txt.exists()) else 1
         ffmpeg_args += ["-map", "0:a", "-map", f"{cover_idx}:v",
                         "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]

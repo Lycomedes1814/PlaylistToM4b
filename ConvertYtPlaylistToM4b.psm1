@@ -136,11 +136,18 @@ function Convert-YtPlaylistToM4b {
     $ffmpegArgs = @("-y", "-f", "concat", "-safe", "0", "-i", $listTxt)
 
     if ($hasChapters) {
-        $ffmpegArgs += @("-i", $chapterTxt, "-map_metadata", "1", "-map_chapters", "1")
+        $ffmpegArgs += @("-i", $chapterTxt)
     }
 
     if ($hasCover) {
         $ffmpegArgs += @("-i", $coverJpg)
+    }
+
+    if ($hasChapters) {
+        $ffmpegArgs += @("-map_metadata", "1", "-map_chapters", "1")
+    }
+
+    if ($hasCover) {
         $coverStreamIndex = if ($hasChapters) { 2 } else { 1 }
         $ffmpegArgs += @("-map", "0:a", "-map", "${coverStreamIndex}:v")
         $ffmpegArgs += @("-c:v", "mjpeg", "-disposition:v:0", "attached_pic")
