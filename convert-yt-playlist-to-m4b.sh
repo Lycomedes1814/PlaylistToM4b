@@ -109,7 +109,8 @@ CUMULATIVE_MS=0
 HAS_CHAPTERS=1
 
 for FILE in "${AUDIO_FILES[@]}"; do
-    echo "file '${FILE}'" >> "$LIST_TXT"
+    ESCAPED_FILE="${FILE//\'/\'\\\'\'}"
+    echo "file '${ESCAPED_FILE}'" >> "$LIST_TXT"
 
     DURATION_STR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$FILE" 2>/dev/null || true)
     DURATION_STR=$(echo "$DURATION_STR" | tr -d '[:space:]')
@@ -121,9 +122,8 @@ for FILE in "${AUDIO_FILES[@]}"; do
         break
     fi
 
-    # Convert to integer milliseconds via awk
     START_MS=$CUMULATIVE_MS
-    END_MS=$(awk "BEGIN { printf \"%d\", $CUMULATIVE_MS + $DURATION_STR * 1000 }")
+    END_MS=$(awk -v cum="$CUMULATIVE_MS" -v dur="$DURATION_STR" 'BEGIN { printf "%d", cum + dur * 1000 }')
     CUMULATIVE_MS=$END_MS
 
     # Strip leading index and extension to get chapter title

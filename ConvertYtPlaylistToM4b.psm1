@@ -107,11 +107,13 @@ function Convert-YtPlaylistToM4b {
         $cumulativeMs = $endMs
     }
 
-    $concatLines | Set-Content -Encoding utf8 $listTxt
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllLines($listTxt, $concatLines, $utf8NoBom)
 
     $hasChapters = $chapterLines.Count -gt 0
     if ($hasChapters) {
-        (";FFMETADATA1`n" + ($chapterLines -join "`n")) | Set-Content -Encoding utf8 $chapterTxt
+        $chapterContent = @(";FFMETADATA1") + $chapterLines
+        [System.IO.File]::WriteAllLines($chapterTxt, $chapterContent, $utf8NoBom)
         Write-Host "  Generated $($audioFiles.Count) chapter marker(s)." -ForegroundColor Gray
     }
 

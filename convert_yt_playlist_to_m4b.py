@@ -118,7 +118,8 @@ def main():
     has_chapters  = True
 
     for f in audio_files:
-        concat_lines.append(f"file '{str(f)}'")
+        escaped = f.as_posix().replace("'", r"'\''")
+        concat_lines.append(f"file '{escaped}'")
 
         duration = get_duration(f)
         if duration is None or duration <= 0:
