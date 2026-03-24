@@ -10,6 +10,22 @@ Converts a YouTube playlist to a single M4B audiobook file with per-video chapte
 - Embeds playlist thumbnail as cover art
 - Cleans up intermediate files after encoding
 
+## Quick Install (PowerShell)
+
+Run the installer script — it handles dependencies and module installation automatically:
+
+```powershell
+.\Install.ps1
+```
+
+Then in any new PowerShell session:
+
+```powershell
+Convert-YtPlaylistToM4b -Url "https://www.youtube.com/playlist?list=PLxxxxx"
+```
+
+---
+
 ## Dependencies
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
