@@ -164,14 +164,24 @@ fi
 
 # ---------- Step 5: encode M4B ----------
 echo -e "\033[0;36m[5/5] Encoding M4B...\033[0m"
+
+# Build inputs first, then output options (ffmpeg requires all -i before output flags)
 FFMPEG_ARGS=(-y -f concat -safe 0 -i "$LIST_TXT")
 
 if [[ $HAS_CHAPTERS -eq 1 && -f "$CHAPTER_TXT" ]]; then
-    FFMPEG_ARGS+=(-i "$CHAPTER_TXT" -map_metadata 1 -map_chapters 1)
+    FFMPEG_ARGS+=(-i "$CHAPTER_TXT")
 fi
 
 if [[ $HAS_COVER -eq 1 ]]; then
     FFMPEG_ARGS+=(-i "$COVER_JPG")
+fi
+
+# Output options
+if [[ $HAS_CHAPTERS -eq 1 && -f "$CHAPTER_TXT" ]]; then
+    FFMPEG_ARGS+=(-map_metadata 1 -map_chapters 1)
+fi
+
+if [[ $HAS_COVER -eq 1 ]]; then
     COVER_STREAM_INDEX=$(( HAS_CHAPTERS == 1 ? 2 : 1 ))
     FFMPEG_ARGS+=(-map 0:a -map "${COVER_STREAM_INDEX}:v")
     FFMPEG_ARGS+=(-c:v mjpeg -disposition:v:0 attached_pic)
