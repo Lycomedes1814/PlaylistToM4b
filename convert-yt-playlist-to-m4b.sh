@@ -48,6 +48,11 @@ if [[ -z "$URL" ]]; then
     exit 1
 fi
 
+if ! [[ "$BITRATE" =~ ^[0-9]+$ ]] || [[ "$BITRATE" -eq 0 ]]; then
+    echo "Error: Bitrate (-b) must be a positive integer." >&2
+    exit 1
+fi
+
 for cmd in yt-dlp ffmpeg ffprobe; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Error: '$cmd' is not installed or not in PATH." >&2
@@ -57,9 +62,11 @@ done
 
 # ---------- Step 1: playlist metadata ----------
 echo -e "\033[0;36m[1/5] Fetching playlist metadata...\033[0m"
-META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" "$URL" 2>/dev/null) || true
-PLAYLIST_TITLE=$(echo "$META" | cut -f1)
-UPLOADER=$(echo "$META" | cut -f2)
+META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
+    echo -e "  \033[0;33mWarning: Could not fetch playlist metadata, using defaults.\033[0m"
+}
+PLAYLIST_TITLE=$(echo "$META" | head -n1 | cut -f1)
+UPLOADER=$(echo "$META" | head -n1 | cut -f2)
 [[ -z "$PLAYLIST_TITLE" ]] && PLAYLIST_TITLE="audiobook"
 [[ -z "$UPLOADER"       ]] && UPLOADER="Unknown Artist"
 
@@ -88,7 +95,7 @@ yt-dlp \
     -x \
     -f "bestaudio" \
     -o "$WORKDIR/%(playlist_index)03d - %(title)s.%(ext)s" \
-    "$URL"
+    -- "$URL"
 
 # ---------- Step 3: concat list + chapter metadata ----------
 echo -e "\033[0;36m[3/5] Building concat list and chapter metadata...\033[0m"
@@ -111,7 +118,8 @@ CUMULATIVE_MS=0
 HAS_CHAPTERS=1
 
 for FILE in "${AUDIO_FILES[@]}"; do
-    ESCAPED_FILE="${FILE//\'/\'\\\'\'}"
+    FORWARD_FILE="${FILE//\\//}"
+    ESCAPED_FILE="${FORWARD_FILE//\'/\'\\\'\'}"
     echo "file '${ESCAPED_FILE}'" >> "$LIST_TXT"
 
     DURATION_STR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$FILE" 2>/dev/null || true)
@@ -132,11 +140,16 @@ for FILE in "${AUDIO_FILES[@]}"; do
     BASENAME=$(basename "$FILE")
     CHAPTER_TITLE="${BASENAME%.*}"
     CHAPTER_TITLE=$(echo "$CHAPTER_TITLE" | sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//')
+    # Escape special characters for ffmetadata format
+    CHAPTER_TITLE="${CHAPTER_TITLE//\\/\\\\}"
+    CHAPTER_TITLE="${CHAPTER_TITLE//=/\\=}"
+    CHAPTER_TITLE="${CHAPTER_TITLE//;/\\;}"
+    CHAPTER_TITLE="${CHAPTER_TITLE//#/\\#}"
 
     CHAPTER_LINES+=("[CHAPTER]")
     CHAPTER_LINES+=("TIMEBASE=1/1000")
     CHAPTER_LINES+=("START=$START_MS")
-    CHAPTER_LINES+=("END=$END_MS")
+    CHAPTER_LINES+=("END=$((END_MS - 1))")
     CHAPTER_LINES+=("title=$CHAPTER_TITLE")
 done
 
@@ -156,7 +169,7 @@ yt-dlp \
     --convert-thumbnails jpg \
     --playlist-items 1 \
     -o "$WORKDIR/cover" \
-    "$URL" || true
+    -- "$URL" || true
 
 HAS_COVER=0
 [[ -f "$COVER_JPG" ]] && HAS_COVER=1
@@ -169,9 +182,11 @@ echo -e "\033[0;36m[5/5] Encoding M4B...\033[0m"
 
 # Build inputs first, then output options (ffmpeg requires all -i before output flags)
 FFMPEG_ARGS=(-y -f concat -safe 0 -i "$LIST_TXT")
+CHAPTERS_INPUT=0
 
 if [[ $HAS_CHAPTERS -eq 1 && -f "$CHAPTER_TXT" ]]; then
     FFMPEG_ARGS+=(-i "$CHAPTER_TXT")
+    CHAPTERS_INPUT=1
 fi
 
 if [[ $HAS_COVER -eq 1 ]]; then
@@ -179,12 +194,12 @@ if [[ $HAS_COVER -eq 1 ]]; then
 fi
 
 # Output options
-if [[ $HAS_CHAPTERS -eq 1 && -f "$CHAPTER_TXT" ]]; then
+if [[ $CHAPTERS_INPUT -eq 1 ]]; then
     FFMPEG_ARGS+=(-map_metadata 1 -map_chapters 1)
 fi
 
 if [[ $HAS_COVER -eq 1 ]]; then
-    COVER_STREAM_INDEX=$(( HAS_CHAPTERS == 1 ? 2 : 1 ))
+    COVER_STREAM_INDEX=$(( CHAPTERS_INPUT == 1 ? 2 : 1 ))
     FFMPEG_ARGS+=(-map 0:a -map "${COVER_STREAM_INDEX}:v")
     FFMPEG_ARGS+=(-c:v mjpeg -disposition:v:0 attached_pic)
 else
