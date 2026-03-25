@@ -33,5 +33,5 @@ External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
 No test suite. Manual testing requires a real YouTube playlist URL and the external tools installed.
 
 ```bash
-./convert-yt-playlist-to-m4b.sh "<playlist-url>"
+./convert-yt-playlist-to-m4b.sh -u "<playlist-url>"
 ```
