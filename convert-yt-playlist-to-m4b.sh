@@ -109,9 +109,10 @@ yt-dlp \
 # ---------- Step 3: normalize audio ----------
 if [[ $NORMALIZE -eq 1 ]]; then
     echo -e "\033[0;36m[3/6] Normalizing audio (EBU R128)...\033[0m"
+    shopt -s nullglob
     for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
-        [[ -f "$FILE" ]] || continue
-        TMPFILE="${FILE}.norm.wav"
+        EXT="${FILE##*.}"
+        TMPFILE="${FILE%.${EXT}}.norm.${EXT}"
         if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 "$TMPFILE" 2>/dev/null; then
             mv "$TMPFILE" "$FILE"
             echo -e "  \033[0;37mNormalized: $(basename "$FILE")\033[0m"
@@ -120,6 +121,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
             rm -f "$TMPFILE"
         fi
     done
+    shopt -u nullglob
 else
     echo -e "\033[0;36m[3/6] Skipping audio normalization.\033[0m"
 fi
@@ -149,7 +151,7 @@ for FILE in "${AUDIO_FILES[@]}"; do
     ESCAPED_FILE="${FORWARD_FILE//\'/\'\\\'\'}"
     echo "file '${ESCAPED_FILE}'" >> "$LIST_TXT"
 
-    DURATION_STR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$FILE" 2>/dev/null || true)
+    DURATION_STR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 -- "$FILE" 2>/dev/null || true)
     DURATION_STR=$(echo "$DURATION_STR" | tr -d '[:space:]')
 
     if [[ -z "$DURATION_STR" ]] || ! [[ "$DURATION_STR" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
@@ -176,7 +178,7 @@ for FILE in "${AUDIO_FILES[@]}"; do
     CHAPTER_LINES+=("[CHAPTER]")
     CHAPTER_LINES+=("TIMEBASE=1/1000")
     CHAPTER_LINES+=("START=$START_MS")
-    CHAPTER_LINES+=("END=$((END_MS - 1))")
+    CHAPTER_LINES+=("END=$END_MS")
     CHAPTER_LINES+=("title=$CHAPTER_TITLE")
 done
 
