@@ -103,8 +103,8 @@ yt-dlp \
     --fragment-retries infinite \
     -x \
     -f "bestaudio" \
-    -o "$WORKDIR/%(playlist_index)03d - %(title)s.%(ext)s" \
-    -- "$URL"
+    -o "$WORKDIR/%(playlist_index)03d - %(title).200B.%(ext)s" \
+    -- "$URL" || true
 
 # ---------- Step 3: normalize audio ----------
 if [[ $NORMALIZE -eq 1 ]]; then
