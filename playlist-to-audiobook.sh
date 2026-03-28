@@ -157,6 +157,7 @@ log_step "[1/6] Fetching metadata..."
 
 # Detect whether URL is a single video or a playlist
 IS_PLAYLIST=1
+VIDEO_CHAPTERS_JSON=""
 META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
     META=""
 }
@@ -172,6 +173,12 @@ if [[ -z "$PLAYLIST_TITLE" || "$PLAYLIST_TITLE" == "NA" ]]; then
     }
     PLAYLIST_TITLE=$(echo "$META" | head -n1 | cut -f1)
     UPLOADER=$(echo "$META" | head -n1 | cut -f2)
+
+    # Fetch video chapter markers (YouTube chapters)
+    VIDEO_CHAPTERS_JSON=$(yt-dlp --skip-download --print "%(chapters)j" -- "$URL" 2>/dev/null) || VIDEO_CHAPTERS_JSON=""
+    if [[ "$VIDEO_CHAPTERS_JSON" == "null" || "$VIDEO_CHAPTERS_JSON" == "NA" ]]; then
+        VIDEO_CHAPTERS_JSON=""
+    fi
 fi
 
 [[ -z "$PLAYLIST_TITLE" ]] && PLAYLIST_TITLE="audiobook"
@@ -381,6 +388,41 @@ for i in "${!AUDIO_FILES[@]}"; do
     CHAPTER_LINES+=("END=$END_MS")
     CHAPTER_LINES+=("title=$CHAPTER_TITLE")
 done
+
+# For single videos with YouTube chapter markers, replace per-file chapters
+if [[ $IS_PLAYLIST -eq 0 && -n "$VIDEO_CHAPTERS_JSON" && $HAS_CHAPTERS -eq 1 ]]; then
+    # Parse chapter count from JSON array
+    CHAPTER_COUNT=$(echo "$VIDEO_CHAPTERS_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null) || CHAPTER_COUNT=0
+    if [[ "$CHAPTER_COUNT" -gt 0 ]]; then
+        CHAPTER_LINES=()
+        TOTAL_DURATION_MS=$CUMULATIVE_MS
+        while IFS=$'\t' read -r ch_start ch_end ch_title; do
+            START_MS=$(awk -v s="$ch_start" 'BEGIN { printf "%d", s * 1000 }')
+            END_MS=$(awk -v e="$ch_end" 'BEGIN { printf "%d", e * 1000 }')
+            # Clamp end to actual audio duration
+            if [[ $END_MS -gt $TOTAL_DURATION_MS ]]; then
+                END_MS=$TOTAL_DURATION_MS
+            fi
+            # Escape special characters for ffmetadata format
+            ch_title="${ch_title//\\/\\\\}"
+            ch_title="${ch_title//=/\\=}"
+            ch_title="${ch_title//;/\\;}"
+            ch_title="${ch_title//#/\\#}"
+
+            CHAPTER_LINES+=("[CHAPTER]")
+            CHAPTER_LINES+=("TIMEBASE=1/1000")
+            CHAPTER_LINES+=("START=$START_MS")
+            CHAPTER_LINES+=("END=$END_MS")
+            CHAPTER_LINES+=("title=$ch_title")
+        done < <(echo "$VIDEO_CHAPTERS_JSON" | python3 -c "
+import sys, json
+chapters = json.load(sys.stdin)
+for ch in chapters:
+    print('%s\t%s\t%s' % (ch['start_time'], ch['end_time'], ch['title']))
+" 2>/dev/null)
+        log_info "Using $CHAPTER_COUNT video chapter marker(s) from YouTube."
+    fi
+fi
 
 if [[ $HAS_CHAPTERS -eq 1 && ${#CHAPTER_LINES[@]} -gt 0 ]]; then
     {

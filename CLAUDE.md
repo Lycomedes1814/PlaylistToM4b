@@ -10,10 +10,10 @@ Converts a YouTube playlist (or single video) into a single M4B audiobook with p
 
 The script follows a 6-step pipeline:
 
-1. **Fetch metadata** — `yt-dlp --flat-playlist` to get playlist title and uploader; falls back to single-video metadata
+1. **Fetch metadata** — `yt-dlp --flat-playlist` to get playlist title and uploader; falls back to single-video metadata and fetches YouTube chapter markers via `%(chapters)j`
 2. **Download audio** — `yt-dlp -x -f bestaudio` with indexed filenames (`%03d - title.ext`); `--no-overwrites` enables resume
 3. **Normalize audio** — two-pass EBU R128 loudness normalization via ffmpeg `loudnorm` filter (skip with `-n`); tracks completed files for resume
-4. **Build concat list + chapters** — ffmpeg concat demuxer `list.txt` and `;FFMETADATA1` chapter file, using `ffprobe` for per-file durations; optional silence gaps between chapters
+4. **Build concat list + chapters** — ffmpeg concat demuxer `list.txt` and `;FFMETADATA1` chapter file, using `ffprobe` for per-file durations; for single videos, YouTube chapter markers are used if available; optional silence gaps between chapters
 5. **Cover art** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`, or user-provided image via `-c`
 6. **Encode M4B** — `ffmpeg` concat → AAC with chapters, cover art, and metadata
 

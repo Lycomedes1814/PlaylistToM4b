@@ -8,7 +8,7 @@ Converts a YouTube playlist (or single video) into a single M4B audiobook file w
 - Supports playlists and single videos
 - EBU R128 loudness normalization (two-pass)
 - Encodes to AAC M4B with configurable bitrate
-- Embeds chapter markers (one per video)
+- Embeds chapter markers (one per video, or uses YouTube chapter markers for single videos)
 - Embeds playlist thumbnail or custom cover art
 - Optional silence gaps between chapters
 - Resumable downloads and normalization
