@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Converts a YouTube playlist into a single M4B audiobook with per-video chapter markers and cover art. Single Bash implementation.
+Converts a YouTube playlist (or single video) into a single M4B audiobook with per-video chapter markers and cover art. Single Bash implementation.
 
 ## Architecture
 
 The script follows a 6-step pipeline:
 
-1. **Fetch metadata** — `yt-dlp --flat-playlist` to get playlist title and uploader
-2. **Download audio** — `yt-dlp -x -f bestaudio` with indexed filenames (`%03d - title.ext`)
-3. **Normalize audio** — per-file EBU R128 loudness normalization via ffmpeg `loudnorm` filter (skip with `-n`)
-4. **Build concat list + chapters** — ffmpeg concat demuxer `list.txt` and `;FFMETADATA1` chapter file, using `ffprobe` for per-file durations
-5. **Download thumbnail** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`
+1. **Fetch metadata** — `yt-dlp --flat-playlist` to get playlist title and uploader; falls back to single-video metadata
+2. **Download audio** — `yt-dlp -x -f bestaudio` with indexed filenames (`%03d - title.ext`); `--no-overwrites` enables resume
+3. **Normalize audio** — two-pass EBU R128 loudness normalization via ffmpeg `loudnorm` filter (skip with `-n`); tracks completed files for resume
+4. **Build concat list + chapters** — ffmpeg concat demuxer `list.txt` and `;FFMETADATA1` chapter file, using `ffprobe` for per-file durations; optional silence gaps between chapters
+5. **Cover art** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`, or user-provided image via `-c`
 6. **Encode M4B** — `ffmpeg` concat → AAC with chapters, cover art, and metadata
 
 External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
