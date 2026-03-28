@@ -19,8 +19,9 @@ Converts a YouTube playlist (or single video) into a single M4B audiobook file w
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/) (includes `ffprobe`)
+- `python3` (used for parsing YouTube chapter metadata)
 
-Both must be on your `PATH`.
+All must be on your `PATH`.
 
 ## Usage
 
@@ -70,4 +71,4 @@ Both must be on your `PATH`.
 
 ## Output
 
-The `.m4b` file is written to the current directory (or the directory specified with `-d`) using the playlist title (or `-o`) as the filename. Intermediate files are placed in a same-named subdirectory and removed after encoding unless `-k` is set.
+The `.m4b` file is written to the current directory (or the directory specified with `-d`) using the playlist title (or `-o`) as the filename. Intermediate files are placed in a unique temporary work directory alongside the output file and removed after encoding unless `-k` is set.

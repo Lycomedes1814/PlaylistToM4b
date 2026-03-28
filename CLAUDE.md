@@ -17,7 +17,7 @@ The script follows a 6-step pipeline:
 5. **Cover art** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`, or user-provided image via `-c`
 6. **Encode M4B** — `ffmpeg` concat → AAC with chapters, cover art, and metadata
 
-External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
+External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe`, `python3` (must be on PATH).
 
 ## File Map
 

@@ -2,7 +2,7 @@
 # playlist-to-audiobook.sh
 # Converts a YouTube playlist to a single M4B audiobook file with chapters and cover art.
 #
-# Dependencies: yt-dlp, ffmpeg, ffprobe
+# Dependencies: yt-dlp, ffmpeg, ffprobe, python3
 #
 # Usage:
 #   playlist-to-audiobook.sh -u <url> [-o <output-name>] [-d <output-dir>]
@@ -54,7 +54,7 @@ Options:
   --dry-run              Show what would be done, then exit
   -h, --help             Show this help message
 
-Dependencies: yt-dlp, ffmpeg, ffprobe
+Dependencies: yt-dlp, ffmpeg, ffprobe, python3
 EOF
     exit 0
 }
@@ -131,7 +131,7 @@ if [[ -n "$OUTPUT_DIR" && ! -d "$OUTPUT_DIR" ]]; then
     exit 1
 fi
 
-for cmd in yt-dlp ffmpeg ffprobe; do
+for cmd in yt-dlp ffmpeg ffprobe python3; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Error: '$cmd' is not installed or not in PATH." >&2
         exit 1
@@ -144,6 +144,35 @@ log_step() { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;36m$1\033[0m"; fi; }
 log_info() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;37m$1\033[0m"; fi; }
 log_warn() { echo -e "  \033[0;33mWarning: $1\033[0m" >&2; }
 log_ok()   { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;32m$1\033[0m"; fi; }
+
+count_requested_items() {
+    local spec="$1"
+    local total=0
+    local part start end
+
+    [[ -z "$spec" ]] && return 1
+
+    IFS=',' read -ra parts <<< "$spec"
+    for part in "${parts[@]}"; do
+        part="${part//[[:space:]]/}"
+        [[ -z "$part" ]] && return 1
+
+        if [[ "$part" =~ ^[0-9]+$ ]]; then
+            total=$((total + 1))
+        elif [[ "$part" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+            start="${BASH_REMATCH[1]}"
+            end="${BASH_REMATCH[2]}"
+            if (( end < start )); then
+                return 1
+            fi
+            total=$((total + end - start + 1))
+        else
+            return 1
+        fi
+    done
+
+    printf '%s\n' "$total"
+}
 
 # Redirect target for yt-dlp/ffmpeg output based on verbosity
 if [[ $VERBOSE -eq 1 ]]; then
@@ -189,12 +218,15 @@ fi
 [[ -z "$ALBUM"       ]] && ALBUM="$PLAYLIST_TITLE"
 [[ -z "$ARTIST"      ]] && ARTIST="$UPLOADER"
 
-# Sanitize filename
-SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*'"'" '_')
-WORKDIR="$(pwd)/$SAFE_OUTPUT_NAME"
-mkdir -p "$WORKDIR"
+EXPECTED_ITEM_COUNT=""
+if [[ $IS_PLAYLIST -eq 1 && -n "$ITEMS" ]]; then
+    EXPECTED_ITEM_COUNT=$(count_requested_items "$ITEMS" 2>/dev/null || true)
+fi
 
 BASE_DIR="${OUTPUT_DIR:-$(pwd)}"
+# Sanitize filename
+SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*'"'" '_')
+WORKDIR=$(mktemp -d "${BASE_DIR}/${SAFE_OUTPUT_NAME}.work.XXXXXX")
 LIST_TXT="$WORKDIR/list.txt"
 CHAPTER_TXT="$WORKDIR/chapters.txt"
 COVER_JPG="$WORKDIR/cover.jpg"
@@ -244,7 +276,24 @@ else
     YTDLP_ARGS+=(-o "$WORKDIR/001 - %(title).200B.%(ext)s")
 fi
 
-yt-dlp "${YTDLP_ARGS[@]}" -- "$URL" > "$REDIR" 2>&1 || true
+DOWNLOAD_STATUS=0
+if ! yt-dlp "${YTDLP_ARGS[@]}" -- "$URL" > "$REDIR" 2>&1; then
+    DOWNLOAD_STATUS=$?
+fi
+
+if [[ $DOWNLOAD_STATUS -ne 0 ]]; then
+    mapfile -t PARTIAL_AUDIO_FILES < <(find "$WORKDIR" -maxdepth 1 -type f \
+        \( -name "*.webm" -o -name "*.opus" -o -name "*.m4a" \
+           -o -name "*.mp3"  -o -name "*.ogg"  -o -name "*.wav" \
+           -o -name "*.flac" -o -name "*.aac" \) | sort)
+
+    if [[ ${#PARTIAL_AUDIO_FILES[@]} -eq 0 ]]; then
+        echo "Error: yt-dlp failed before downloading any audio files." >&2
+        exit "$DOWNLOAD_STATUS"
+    fi
+
+    log_warn "yt-dlp reported errors; continuing with ${#PARTIAL_AUDIO_FILES[@]} downloaded file(s). Some playlist items may be unavailable."
+fi
 
 # ---------- Step 3: normalize audio (two-pass EBU R128) ----------
 if [[ $NORMALIZE -eq 1 ]]; then
@@ -337,6 +386,10 @@ if [[ ${#AUDIO_FILES[@]} -eq 0 ]]; then
 fi
 log_info "Found ${#AUDIO_FILES[@]} audio file(s)."
 
+if [[ -n "$EXPECTED_ITEM_COUNT" && ${#AUDIO_FILES[@]} -lt $EXPECTED_ITEM_COUNT ]]; then
+    log_warn "Requested $EXPECTED_ITEM_COUNT playlist item(s), but only found ${#AUDIO_FILES[@]} downloaded audio file(s). Some items may be unavailable."
+fi
+
 : > "$LIST_TXT"
 CHAPTER_LINES=()
 CUMULATIVE_MS=0
@@ -425,11 +478,12 @@ for ch in chapters:
 fi
 
 if [[ $HAS_CHAPTERS -eq 1 && ${#CHAPTER_LINES[@]} -gt 0 ]]; then
+    CHAPTER_COUNT=$(( ${#CHAPTER_LINES[@]} / 5 ))
     {
         echo ";FFMETADATA1"
         printf '%s\n' "${CHAPTER_LINES[@]}"
     } > "$CHAPTER_TXT"
-    log_info "Generated ${#AUDIO_FILES[@]} chapter marker(s)."
+    log_info "Generated $CHAPTER_COUNT chapter marker(s)."
 fi
 
 # ---------- Step 5: thumbnail / cover art ----------
