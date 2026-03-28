@@ -246,24 +246,20 @@ if [[ $NORMALIZE -eq 1 ]]; then
     shopt -s nullglob
     for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
         BASENAME=$(basename "$FILE")
-        # Resume: skip files already normalized in a previous run
+        EXT="${FILE##*.}"
+        WAVFILE="${FILE%.${EXT}}.wav"
+        TMPFILE="${FILE%.${EXT}}.norm.wav"
+
+        # Resume: skip if already normalized, or if a normalized wav sibling exists
+        # (the lossy original may have been re-downloaded by yt-dlp)
+        if [[ "$EXT" != "wav" && -f "$WAVFILE" ]]; then
+            log_info "Removing re-downloaded $BASENAME (normalized wav exists)"
+            rm -f "$FILE"
+            continue
+        fi
         if [[ -f "$NORM_DONE_MARKER" ]] && grep -qxF "$BASENAME" "$NORM_DONE_MARKER"; then
             log_info "Already normalized: $BASENAME"
             continue
-        fi
-
-        EXT="${FILE##*.}"
-        TMPFILE="${FILE%.${EXT}}.norm.${EXT}"
-
-        # Probe source bitrate so the normalized file doesn't lose quality
-        # Try stream-level first, fall back to format-level (opus reports N/A at stream level)
-        SRC_BR=$(ffprobe -v error -show_entries stream=bit_rate -of csv=p=0 -- "$FILE" 2>/dev/null | tr -d '[:space:]')
-        if [[ -z "$SRC_BR" || "$SRC_BR" == "N/A" ]]; then
-            SRC_BR=$(ffprobe -v error -show_entries format=bit_rate -of csv=p=0 -- "$FILE" 2>/dev/null | tr -d '[:space:]')
-        fi
-        BR_ARGS=()
-        if [[ -n "$SRC_BR" && "$SRC_BR" =~ ^[0-9]+$ && "$SRC_BR" -gt 0 ]]; then
-            BR_ARGS+=(-b:a "${SRC_BR}")
         fi
 
         # Pass 1: measure loudness stats
@@ -277,9 +273,11 @@ if [[ $NORMALIZE -eq 1 ]]; then
         if [[ -z "$INPUT_I" || -z "$INPUT_TP" || -z "$INPUT_LRA" || -z "$INPUT_THRESH" ]]; then
             # Fallback to single-pass if measurement fails
             log_warn "Two-pass measurement failed for $BASENAME, trying single-pass."
-            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 "${BR_ARGS[@]}" "$TMPFILE" > "$REDIR" 2>&1; then
-                mv "$TMPFILE" "$FILE"
+            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+                mv "$TMPFILE" "$WAVFILE"
+                [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
                 echo "$BASENAME" >> "$NORM_DONE_MARKER"
+                echo "$(basename "$WAVFILE")" >> "$NORM_DONE_MARKER"
                 log_info "Normalized (single-pass): $BASENAME"
             else
                 log_warn "Could not normalize $BASENAME, keeping original."
@@ -288,12 +286,14 @@ if [[ $NORMALIZE -eq 1 ]]; then
             continue
         fi
 
-        # Pass 2: apply measured values
+        # Pass 2: apply measured values (output lossless WAV to avoid double lossy compression)
         if ffmpeg -y -i "$FILE" -af \
             "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${INPUT_I}:measured_TP=${INPUT_TP}:measured_LRA=${INPUT_LRA}:measured_thresh=${INPUT_THRESH}:linear=true" \
-            "${BR_ARGS[@]}" "$TMPFILE" > "$REDIR" 2>&1; then
-            mv "$TMPFILE" "$FILE"
+            -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            mv "$TMPFILE" "$WAVFILE"
+            [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
             echo "$BASENAME" >> "$NORM_DONE_MARKER"
+            echo "$(basename "$WAVFILE")" >> "$NORM_DONE_MARKER"
             log_info "Normalized: $BASENAME"
         else
             log_warn "Could not normalize $BASENAME, keeping original."
