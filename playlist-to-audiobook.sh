@@ -75,6 +75,7 @@ VERBOSE=0
 QUIET=0
 DRY_RUN=0
 CHAPTER_GAP=0
+OUTPUT_SAMPLE_RATE=48000
 
 # ---------- parse args ----------
 PARSED=$(getopt -o u:o:d:t:a:l:b:c:knvqh \
@@ -344,7 +345,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
         if [[ -z "$INPUT_I" || -z "$INPUT_TP" || -z "$INPUT_LRA" || -z "$INPUT_THRESH" ]]; then
             # Fallback to single-pass if measurement fails
             log_warn "Two-pass measurement failed for $BASENAME, trying single-pass."
-            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 -ar "$OUTPUT_SAMPLE_RATE" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
                 mv "$TMPFILE" "$WAVFILE"
                 [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
                 echo "$BASENAME" >> "$NORM_DONE_MARKER"
@@ -360,7 +361,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
         # Pass 2: apply measured values (output lossless WAV to avoid double lossy compression)
         if ffmpeg -y -i "$FILE" -af \
             "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${INPUT_I}:measured_TP=${INPUT_TP}:measured_LRA=${INPUT_LRA}:measured_thresh=${INPUT_THRESH}:linear=true" \
-            -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            -ar "$OUTPUT_SAMPLE_RATE" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
             mv "$TMPFILE" "$WAVFILE"
             [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
             echo "$BASENAME" >> "$NORM_DONE_MARKER"
@@ -555,7 +556,7 @@ else
 fi
 
 FFMPEG_ARGS+=(
-    -c:a aac -b:a "${BITRATE}k"
+    -c:a aac -ar "$OUTPUT_SAMPLE_RATE" -b:a "${BITRATE}k"
     -metadata "title=$TITLE"
     -metadata "artist=$ARTIST"
     -metadata "album=$ALBUM"
