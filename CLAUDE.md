@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Converts a YouTube playlist (or single video) into a single M4B audiobook with per-video chapter markers and cover art. Single Bash implementation.
+Converts a YouTube playlist (or single video) into one or more M4B audiobooks with chapter markers and cover art. Single Bash implementation.
 
 ## Architecture
 
@@ -16,6 +16,8 @@ The script follows a 6-step pipeline:
 4. **Build concat list + chapters** — ffmpeg concat demuxer `list.txt` and `;FFMETADATA1` chapter file, using `ffprobe` for per-file durations; for single videos, YouTube chapter markers are used if available; optional silence gaps between chapters
 5. **Cover art** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`, or user-provided image via `-c`
 6. **Encode M4B** — `ffmpeg` concat → AAC with chapters, cover art, and metadata
+
+**Split mode (`-s`):** steps 4–6 are replaced by a per-file loop that encodes each normalized audio file directly to its own M4B. Per-item thumbnails are downloaded during step 2 via `--write-thumbnail`. Steps 4–6 of the normal path are skipped entirely.
 
 External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe`, `python3` (must be on PATH).
 
