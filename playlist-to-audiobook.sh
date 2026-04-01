@@ -9,7 +9,7 @@
 #                            [-t <title>] [-a <artist>] [-l <album>]
 #                            [-b <bitrate-kbps>] [-c <cover-image>]
 #                            [-i <range>] [--chapter-gap <seconds>]
-#                            [-k] [-n] [-v] [-q] [--dry-run]
+#                            [-s] [-k] [-n] [-v] [-q] [--dry-run]
 #
 # Options:
 #   -u, --url            URL of the YouTube playlist or single video (required)
@@ -22,6 +22,7 @@
 #   -c, --cover          Path to a local image file to use as cover art
 #   -i, --items          Playlist item range (e.g. "1-5", "2,4,6"); passed to yt-dlp
 #   --chapter-gap        Seconds of silence to insert between chapters; defaults to 0
+#   -s, --split          Encode each playlist item as its own M4B file
 #   -k, --keep           Keep downloaded files after encoding
 #   -n, --no-normalize   Skip per-file audio normalization (EBU R128)
 #   -v, --verbose        Show detailed yt-dlp and ffmpeg output
@@ -47,6 +48,7 @@ Options:
   -c, --cover FILE       Local image to use as cover art
   -i, --items RANGE      Playlist items to download (e.g. "1-5", "2,4,6")
   --chapter-gap SECONDS   Silence to insert between chapters (default: 0)
+  -s, --split            Encode each playlist item as its own M4B file
   -k, --keep             Keep intermediate files after encoding
   -n, --no-normalize     Skip EBU R128 audio normalization
   -v, --verbose          Show detailed yt-dlp and ffmpeg output
@@ -68,6 +70,7 @@ ARTIST=""
 ALBUM=""
 BITRATE=160
 KEEP=0
+SPLIT=0
 NORMALIZE=1
 COVER=""
 ITEMS=""
@@ -79,8 +82,8 @@ OUTPUT_SAMPLE_RATE=48000
 OUTPUT_CHANNELS=2
 
 # ---------- parse args ----------
-PARSED=$(getopt -o u:o:d:t:a:l:b:c:i:knvqh \
-    --long url:,output:,output-dir:,title:,artist:,album:,bitrate:,cover:,items:,chapter-gap:,keep,no-normalize,verbose,quiet,dry-run,help \
+PARSED=$(getopt -o u:o:d:t:a:l:b:c:i:sknvqh \
+    --long url:,output:,output-dir:,title:,artist:,album:,bitrate:,cover:,items:,chapter-gap:,split,keep,no-normalize,verbose,quiet,dry-run,help \
     -n "$(basename "$0")" -- "$@") || exit 1
 eval set -- "$PARSED"
 
@@ -96,6 +99,7 @@ while true; do
         -c|--cover)        COVER="$2";       shift 2 ;;
         -i|--items)        ITEMS="$2";       shift 2 ;;
         --chapter-gap)     CHAPTER_GAP="$2"; shift 2 ;;
+        -s|--split)        SPLIT=1;          shift ;;
         -k|--keep)         KEEP=1;           shift ;;
         -n|--no-normalize) NORMALIZE=0;      shift ;;
         -v|--verbose)      VERBOSE=1;        shift ;;
@@ -214,7 +218,7 @@ log_step "[1/6] Fetching metadata..."
 # Detect whether URL is a single video or a playlist
 IS_PLAYLIST=1
 VIDEO_CHAPTERS_JSON=""
-META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
+META=$(yt-dlp --ignore-config --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
     META=""
 }
 PLAYLIST_TITLE=$(echo "$META" | head -n1 | cut -f1)
@@ -223,7 +227,7 @@ UPLOADER=$(echo "$META" | head -n1 | cut -f2)
 # If no playlist title, treat as a single video
 if [[ -z "$PLAYLIST_TITLE" || "$PLAYLIST_TITLE" == "NA" ]]; then
     IS_PLAYLIST=0
-    META=$(yt-dlp --skip-download --print "%(title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
+    META=$(yt-dlp --ignore-config --skip-download --print "%(title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
         log_warn "Could not fetch video metadata, using defaults."
         META=""
     }
@@ -231,7 +235,7 @@ if [[ -z "$PLAYLIST_TITLE" || "$PLAYLIST_TITLE" == "NA" ]]; then
     UPLOADER=$(echo "$META" | head -n1 | cut -f2)
 
     # Fetch video chapter markers (YouTube chapters)
-    VIDEO_CHAPTERS_JSON=$(yt-dlp --skip-download --print "%(chapters)j" -- "$URL" 2>/dev/null) || VIDEO_CHAPTERS_JSON=""
+    VIDEO_CHAPTERS_JSON=$(yt-dlp --ignore-config --skip-download --print "%(chapters)j" -- "$URL" 2>/dev/null) || VIDEO_CHAPTERS_JSON=""
     if [[ "$VIDEO_CHAPTERS_JSON" == "null" || "$VIDEO_CHAPTERS_JSON" == "NA" ]]; then
         VIDEO_CHAPTERS_JSON=""
     fi
@@ -282,14 +286,19 @@ if [[ $DRY_RUN -eq 1 ]]; then
     echo "  URL:        $URL"
     echo "  Type:       $([[ $IS_PLAYLIST -eq 1 ]] && echo "playlist" || echo "single video")"
     [[ -n "$ITEMS" ]] && echo "  Items:      $ITEMS"
-    echo "  Title:      $TITLE"
+    echo "  Mode:       $([[ $SPLIT -eq 1 ]] && echo "split (one M4B per item)" || echo "combined")"
+    echo "  Title:      $([[ $SPLIT -eq 1 ]] && echo "<per-item title>" || echo "$TITLE")"
     echo "  Artist:     $ARTIST"
     echo "  Album:      $ALBUM"
     echo "  Bitrate:    ${BITRATE}k"
     echo "  Normalize:  $([[ $NORMALIZE -eq 1 ]] && echo "yes (two-pass EBU R128)" || echo "no")"
     echo "  Chapter gap: ${CHAPTER_GAP}s"
-    echo "  Cover:      ${COVER:-<playlist thumbnail>}"
-    echo "  Output:     $OUT_M4B"
+    echo "  Cover:      ${COVER:-<per-item thumbnail>}"
+    if [[ $SPLIT -eq 0 ]]; then
+        echo "  Output:     $OUT_M4B"
+    else
+        echo "  Output dir: $BASE_DIR"
+    fi
     exit 0
 fi
 
@@ -297,6 +306,7 @@ fi
 log_step "[2/6] Downloading audio..."
 
 YTDLP_ARGS=(
+    --ignore-config
     --no-overwrites
     --retries infinite
     --fragment-retries infinite
@@ -310,6 +320,10 @@ if [[ $IS_PLAYLIST -eq 1 ]]; then
     [[ -n "$ITEMS" ]] && YTDLP_ARGS+=(--playlist-items "$ITEMS")
 else
     YTDLP_ARGS+=(-o "$WORKDIR/001 - %(title).200B.%(ext)s")
+fi
+
+if [[ $SPLIT -eq 1 && -z "$COVER" ]]; then
+    YTDLP_ARGS+=(--write-thumbnail --convert-thumbnails jpg)
 fi
 
 DOWNLOAD_STATUS=0
@@ -420,6 +434,84 @@ for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
     fi
 done
 shopt -u nullglob
+
+# ---------- Split mode: encode each item as its own M4B ----------
+if [[ $SPLIT -eq 1 ]]; then
+    log_step "[4-6/6] Encoding individual M4B files..."
+
+    mapfile -t SPLIT_FILES < <(find "$WORKDIR" -maxdepth 1 -type f \
+        \( -name "*.webm" -o -name "*.opus" -o -name "*.m4a" \
+           -o -name "*.mp3"  -o -name "*.ogg"  -o -name "*.wav" \
+           -o -name "*.flac" -o -name "*.aac" \) \
+        ! -name "_silence.wav" | sort)
+
+    if [[ ${#SPLIT_FILES[@]} -eq 0 ]]; then
+        echo "Error: No audio files were downloaded." >&2
+        exit 1
+    fi
+
+    SPLIT_COUNT=0
+    for FILE in "${SPLIT_FILES[@]}"; do
+        BASENAME=$(basename "$FILE")
+        # Derive title: strip leading index prefix and extension
+        ITEM_TITLE="${BASENAME%.*}"
+        # shellcheck disable=SC2001
+        ITEM_TITLE=$(sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//' <<< "$ITEM_TITLE")
+
+        SAFE_ITEM_TITLE=$(echo "$ITEM_TITLE" | tr '<>:"/\\|?*'"'" '_')
+        ITEM_M4B="${BASE_DIR}/${SAFE_ITEM_TITLE}.m4b"
+
+        # Per-item cover: look for thumbnail downloaded alongside the audio
+        ITEM_COVER=""
+        if [[ -n "$COVER" ]]; then
+            ITEM_COVER="$COVER"
+        else
+            ITEM_BASE="${FILE%.*}"
+            for _EXT in jpg jpeg png webp; do
+                if [[ -f "${ITEM_BASE}.${_EXT}" ]]; then
+                    ITEM_COVER="${ITEM_BASE}.${_EXT}"
+                    break
+                fi
+            done
+        fi
+
+        ITEM_FFMPEG_ARGS=(-y -i "$FILE")
+        [[ -n "$ITEM_COVER" ]] && ITEM_FFMPEG_ARGS+=(-i "$ITEM_COVER")
+
+        ITEM_FFMPEG_ARGS+=(-map 0:a)
+        if [[ -n "$ITEM_COVER" ]]; then
+            ITEM_FFMPEG_ARGS+=(-map 1:v -c:v mjpeg -disposition:v:0 attached_pic)
+        fi
+
+        # Escape title for ffmetadata-safe -metadata value
+        ITEM_TITLE_META="${ITEM_TITLE//\\/\\\\}"
+        ITEM_TITLE_META="${ITEM_TITLE_META//=/\\=}"
+
+        ITEM_FFMPEG_ARGS+=(
+            -c:a aac -ar "$OUTPUT_SAMPLE_RATE" -b:a "${BITRATE}k"
+            -metadata "title=${ITEM_TITLE_META}"
+            -metadata "artist=$ARTIST"
+            -metadata "album=$ALBUM"
+            -metadata "genre=Audiobook"
+            "$ITEM_M4B"
+        )
+
+        if ffmpeg "${ITEM_FFMPEG_ARGS[@]}" > "$REDIR" 2>&1; then
+            log_info "Encoded: $(basename "$ITEM_M4B")"
+            SPLIT_COUNT=$((SPLIT_COUNT + 1))
+        else
+            log_warn "Failed to encode: $BASENAME"
+        fi
+    done
+
+    if [[ $KEEP -eq 1 ]]; then
+        trap - EXIT
+        log_info "Keeping work files in: $WORKDIR"
+    fi
+
+    log_ok "Done: $SPLIT_COUNT file(s) in $BASE_DIR"
+    exit 0
+fi
 
 # ---------- Step 4: concat list + chapter metadata ----------
 log_step "[4/6] Building concat list and chapter metadata..."
@@ -558,6 +650,7 @@ if [[ -n "$COVER" ]]; then
     log_info "Using custom cover: $COVER"
 else
     yt-dlp \
+        --ignore-config \
         --skip-download \
         --write-thumbnail \
         --convert-thumbnails jpg \
