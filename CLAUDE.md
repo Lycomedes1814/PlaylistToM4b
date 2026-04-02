@@ -17,7 +17,7 @@ The script follows a 6-step pipeline:
 5. **Cover art** — `yt-dlp --write-thumbnail --convert-thumbnails jpg`, or user-provided image via `-c`
 6. **Encode M4B** — `ffmpeg` concat → AAC with chapters, cover art, and metadata
 
-**Split mode (`-s`):** steps 4–6 are replaced by a per-file loop that encodes each normalized audio file directly to its own M4B. Per-item thumbnails are downloaded during step 2 via `--write-thumbnail`. Output filename collisions are resolved by suffixing ` (2)`, ` (3)`, etc. Any per-item encode failure makes the overall run fail. Steps 4–6 of the normal path are skipped entirely.
+**Split mode (`-s`):** steps 4–6 are replaced by a per-file loop that encodes each normalized audio file directly to its own M4B. Per-item metadata JSON (`--write-info-json`) and thumbnails (`--write-thumbnail`) are downloaded during step 2. YouTube chapter markers from each video's info JSON are embedded as M4B chapters. Output filename collisions are resolved by suffixing ` (2)`, ` (3)`, etc. Any per-item encode failure makes the overall run fail. Steps 4–6 of the normal path are skipped entirely.
 
 External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe`, `python3` (must be on PATH).
 

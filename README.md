@@ -8,7 +8,7 @@ Converts a YouTube playlist (or single video) into one or more M4B audiobook fil
 - Supports playlists and single videos
 - EBU R128 loudness normalization (two-pass)
 - Encodes to AAC M4B with configurable bitrate
-- Embeds chapter markers (one per video, or uses YouTube chapter markers for single videos)
+- Embeds chapter markers (one per playlist video in combined mode; YouTube chapter markers when each output file is a single video)
 - Embeds playlist thumbnail or custom cover art
 - **Split mode** — encode each playlist item as its own M4B with per-video cover art
 - Avoids split-mode filename collisions by auto-suffixing duplicates
@@ -80,7 +80,7 @@ python3 ./playlist-to-audiobook.py -u "https://..." -s -d ~/audiobooks
 
 **Combined mode (default):** a single `.m4b` is written to the current directory (or `-d`) using the playlist title (or `-o`) as the filename. Each video becomes a chapter.
 
-**Split mode (`-s`):** one `.m4b` per playlist item, named after each video's title, all written to the output directory. If two items would sanitize to the same filename, later files are suffixed as ` (2)`, ` (3)`, and so on instead of overwriting earlier outputs. Per-video thumbnails are automatically downloaded and embedded as cover art. The `-o` and `-t` flags are ignored in split mode; use `-a`/`-l` to set shared artist and album tags. If any per-item encode fails, the overall run exits with an error.
+**Split mode (`-s`):** one `.m4b` per playlist item, named after each video's title, all written to the output directory. If two items would sanitize to the same filename, later files are suffixed as ` (2)`, ` (3)`, and so on instead of overwriting earlier outputs. Per-video thumbnails are automatically downloaded and embedded as cover art. YouTube chapter markers are embedded when available. The `-o` and `-t` flags are ignored in split mode; use `-a`/`-l` to set shared artist and album tags. If any per-item encode fails, the overall run exits with an error.
 
 In both modes, intermediate files are placed in a temporary work directory and removed after encoding unless `-k` is set.
 

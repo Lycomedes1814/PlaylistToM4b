@@ -335,8 +335,10 @@ def download_audio(state: PipelineState) -> None:
             log_warn(state, "--items ignored for single-video URLs.")
         args += ["-o", str(workdir / "001 - %(title).200B.%(ext)s")]
 
-    if state.config.split and not state.config.cover:
-        args += ["--write-thumbnail", "--convert-thumbnails", "jpg"]
+    if state.config.split:
+        args += ["--write-info-json"]
+        if not state.config.cover:
+            args += ["--write-thumbnail", "--convert-thumbnails", "jpg"]
 
     completed = run_command(state, args + ["--", state.config.url], allow_failure=True)
     if completed.returncode == 0:
@@ -566,6 +568,75 @@ def split_cover_for_file(state: PipelineState, file_path: Path) -> str:
     return ""
 
 
+def chapters_from_info_json(state: PipelineState, file_path: Path) -> list[dict]:
+    workdir = require_path(state.workdir)
+    stem = file_path.stem
+
+    candidate_stems = [stem]
+    if stem.endswith(".prep"):
+        candidate_stems.append(stem[:-5])
+
+    for candidate_stem in candidate_stems:
+        info_path = workdir / f"{candidate_stem}.info.json"
+        if info_path.exists():
+            try:
+                data = json.loads(info_path.read_text(encoding="utf-8"))
+                chapters = data.get("chapters")
+                if chapters:
+                    return chapters
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    prefix_match = re.match(r"^([0-9]+)\s*-\s*", stem)
+    if prefix_match:
+        prefix = prefix_match.group(1)
+        matches = sorted(workdir.glob(f"{prefix} - *.info.json"))
+        if matches:
+            try:
+                data = json.loads(matches[0].read_text(encoding="utf-8"))
+                chapters = data.get("chapters")
+                if chapters:
+                    return chapters
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    return []
+
+
+def build_split_chapter_file(state: PipelineState, file_path: Path, chapters: list[dict]) -> Path | None:
+    duration_str = ffprobe_duration(state, file_path)
+    try:
+        total_duration_ms = int(float(duration_str) * 1000)
+    except (ValueError, TypeError):
+        return None
+
+    chapter_lines: list[str] = []
+    for chapter in chapters:
+        start_ms = int(float(chapter["start_time"]) * 1000)
+        end_ms = min(int(float(chapter["end_time"]) * 1000), total_duration_ms)
+        chapter_lines.extend(
+            [
+                "[CHAPTER]",
+                "TIMEBASE=1/1000",
+                f"START={start_ms}",
+                f"END={end_ms}",
+                f"title={escape_ffmetadata_value(str(chapter['title']))}",
+            ]
+        )
+
+    if not chapter_lines:
+        return None
+
+    chapter_file = file_path.with_suffix(".chapters.txt")
+    with chapter_file.open("w", encoding="utf-8") as handle:
+        handle.write(";FFMETADATA1\n")
+        for line in chapter_lines:
+            handle.write(f"{line}\n")
+
+    log_info(state, f"Using {len(chapters)} chapter marker(s) for {file_path.name}")
+    return chapter_file
+
+
 def encode_split_mode(state: PipelineState) -> None:
     log_step(state, "[4-6/6] Encoding individual M4B files...")
 
@@ -588,13 +659,21 @@ def encode_split_mode(state: PipelineState) -> None:
             log_warn(state, f"Output filename collision for '{item_title}'; using {item_m4b.name} instead.")
 
         item_cover = split_cover_for_file(state, file_path)
+        chapters = chapters_from_info_json(state, file_path)
+        chapter_file = build_split_chapter_file(state, file_path, chapters) if chapters else None
+
         ffmpeg_args = ["ffmpeg", "-y", "-i", str(file_path)]
+        if chapter_file:
+            ffmpeg_args += ["-i", str(chapter_file)]
         if item_cover:
             ffmpeg_args += ["-i", item_cover]
 
         ffmpeg_args += ["-map", "0:a"]
+        if chapter_file:
+            ffmpeg_args += ["-map_metadata", "1", "-map_chapters", "1"]
+        cover_stream = "2" if chapter_file else "1"
         if item_cover:
-            ffmpeg_args += ["-map", "1:v", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
+            ffmpeg_args += ["-map", f"{cover_stream}:v", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
 
         ffmpeg_args += [
             "-c:a",
