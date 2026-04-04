@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# WARNING: This script passes shell-injection payloads (rm -rf /, backtick
+# commands, etc.) as metadata arguments to test that the main script handles
+# them safely. If those payloads are ever mishandled by the test harness itself,
+# the results could be destructive. Review carefully before running on a system
+# you are not prepared to lose.
 
 set -euo pipefail
 
