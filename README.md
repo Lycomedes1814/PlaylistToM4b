@@ -17,6 +17,10 @@ Converts a YouTube playlist (or single video) into one or more M4B audiobook fil
 - Dry-run mode to preview without downloading
 - Cleans up intermediate files after encoding
 
+## Installation
+
+Copy `playlist-to-audiobook.py` to any directory on your `PATH` (e.g. `~/.local/bin/`) to run it as `playlist-to-audiobook.py` from anywhere.
+
 ## Dependencies
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
@@ -84,6 +88,8 @@ python3 ./playlist-to-audiobook.py -u "https://..." -s -d ~/audiobooks
 In both modes, intermediate files are placed in a temporary work directory and removed after encoding unless `-k` is set.
 
 ## Testing
+
+> **Warning:** `test-playlist.sh` downloads real content from YouTube and encodes multiple audiobooks. Only run it if you understand what it does and are prepared for the bandwidth and disk usage it incurs.
 
 ```bash
 ./test-playlist.sh
