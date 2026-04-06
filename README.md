@@ -89,7 +89,7 @@ In both modes, intermediate files are placed in a temporary work directory and r
 
 ## Testing
 
-> **Warning:** `test-playlist.sh` downloads real content from YouTube and encodes multiple audiobooks. Only run it if you understand what it does and are prepared for the bandwidth and disk usage it incurs.
+> **Warning:** `test-playlist.sh` is destructive by design. It passes shell-injection payloads (`rm -rf /`, backtick commands, etc.) as metadata arguments to verify the main script handles them safely — if the test harness itself ever mishandles those payloads, the results could be catastrophic. It also wipes and recreates its output directory on every run, and downloads real content from YouTube. Only run it on a system you are prepared to lose, after reviewing the script.
 
 ```bash
 ./test-playlist.sh
