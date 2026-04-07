@@ -61,22 +61,22 @@ python3 ./playlist-to-audiobook.py -u <url> [options]
 
 ```bash
 # Minimal — full playlist
-python3 ./playlist-to-audiobook.py -u "https://www.youtube.com/playlist?list=PLxxxxx"
+playlist-to-audiobook.py -u "https://www.youtube.com/playlist?list=PLxxxxx"
 
 # Single video
-python3 ./playlist-to-audiobook.py -u "https://www.youtube.com/watch?v=xxxxx"
+playlist-to-audiobook.py -u "https://www.youtube.com/watch?v=xxxxx"
 
 # Custom metadata, 128 kbps, keep files
-python3 ./playlist-to-audiobook.py -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
+playlist-to-audiobook.py -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
 
 # First 5 videos, custom cover, 2s chapter gaps, output to ~/audiobooks
-python3 ./playlist-to-audiobook.py -u "https://..." -i "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
+playlist-to-audiobook.py -u "https://..." -i "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
 
 # Preview without downloading
-python3 ./playlist-to-audiobook.py -u "https://..." --dry-run
+playlist-to-audiobook.py -u "https://..." --dry-run
 
 # Split — one M4B per playlist item, output to ~/audiobooks
-python3 ./playlist-to-audiobook.py -u "https://..." -s -d ~/audiobooks
+playlist-to-audiobook.py -u "https://..." -s -d ~/audiobooks
 ```
 
 ## Output
