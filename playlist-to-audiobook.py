@@ -312,6 +312,18 @@ def iter_audio_files(state: PipelineState, *, exclude_silence: bool = False) -> 
     ]
 
 
+def should_bypass_intermediate_audio(state: PipelineState) -> bool:
+    return not state.is_playlist and not state.config.split and not state.config.normalize and state.config.chapter_gap <= 0
+
+
+def single_audio_file(state: PipelineState) -> Path:
+    audio_files = iter_audio_files(state, exclude_silence=True)
+    if len(audio_files) != 1:
+        print(f"Error: Expected exactly 1 audio file, found {len(audio_files)}.", file=sys.stderr)
+        raise SystemExit(1)
+    return audio_files[0]
+
+
 def download_audio(state: PipelineState) -> None:
     log_step(state, "[2/6] Downloading audio...")
     workdir = require_path(state.workdir)
@@ -919,12 +931,16 @@ def prepare_cover_art(state: PipelineState) -> bool:
 
 def encode_combined(state: PipelineState, has_cover: bool) -> None:
     log_step(state, "[6/6] Encoding M4B...")
-    list_txt = require_path(state.list_txt)
     out_m4b = require_path(state.out_m4b)
     chapter_txt = require_path(state.chapter_txt)
     cover_jpg = require_path(state.cover_jpg)
 
-    ffmpeg_args = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_txt)]
+    ffmpeg_args = ["ffmpeg", "-y"]
+    if should_bypass_intermediate_audio(state):
+        ffmpeg_args += ["-i", str(single_audio_file(state))]
+    else:
+        list_txt = require_path(state.list_txt)
+        ffmpeg_args += ["-f", "concat", "-safe", "0", "-i", str(list_txt)]
     chapters_input = False
     if chapter_txt.exists():
         ffmpeg_args += ["-i", str(chapter_txt)]
@@ -1006,7 +1022,10 @@ def run_pipeline(state: PipelineState) -> PipelineState:
         return state
 
     download_audio(state)
-    prepare_audio(state)
+    if should_bypass_intermediate_audio(state):
+        log_info(state, "Skipping intermediate audio conversion for single-file encode.")
+    else:
+        prepare_audio(state)
 
     if state.config.split:
         encode_split_mode(state)
